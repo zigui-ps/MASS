@@ -31,7 +31,7 @@ GetPoint()
 
 Muscle::
 Muscle(std::string _name,double _f0,double _lm0,double _lt0,double _pen_angle,double lmax)
-	:name(_name),f0(_f0),l_m0(_lm0),l_m(l_mt - l_t0),l_t0(_lt0),l_mt0(0.0),l_mt(1.0),activation(0.0),f_toe(0.33),k_toe(3.0),k_lin(51.878788),e_toe(0.02),e_t0(0.033),k_pe(4.0),e_mo(0.6),gamma(0.5),l_mt_max(lmax)
+	:name(_name),f0(_f0),l_m0(_lm0),l_t0(_lt0),l_mt0(0.0),l_mt(1.0),activation(0.0),f_toe(0.33),k_toe(3.0),k_lin(51.878788),e_toe(0.02),e_t0(0.033),k_pe(4.0),e_mo(0.6),gamma(0.5),l_mt_max(lmax)
 {
 }
 
@@ -47,32 +47,16 @@ AddAnchor(const dart::dynamics::SkeletonPtr& skel,dart::dynamics::BodyNode* bn,c
 	{
 		Eigen::Isometry3d T;
 		T = skel->getBodyNode(i)->getTransform()*skel->getBodyNode(i)->getParentJoint()->getTransformFromChildBodyNode();
-		// local_positions[i] = glob_pos-skel->getBodyNode(i)->getTransform().translation();
-		// local_positions[i] = glob_pos-skel->getBodyNode(i)->getTransform().translation();
 		local_positions[i] = skel->getBodyNode(i)->getTransform().inverse()*glob_pos;
 		distance[i] = (glob_pos-T.translation()).norm();
-		// distance[i] = local_positions[i].norm();
-		// std::cout<<skel->getBodyNode(i)->getName()<<" "<<distance[i]<<std::endl;
 	}
 	std::vector<int> index_sort_by_distance = sort_indices(distance);
-	// std::cout<<std::endl;
-	// for(int i =0;i<skel->getNumBodyNodes();i++)
-	// {
-	// 	std::cout<<skel->getBodyNode(index_sort_by_distance[i])->getName()<<" "<<distance[index_sort_by_distance[i]]<<std::endl;
-	// }
-	// std::cout<<std::endl;
 	
 	std::vector<dart::dynamics::BodyNode*> lbs_body_nodes;
 	std::vector<Eigen::Vector3d> lbs_local_positions;
 	std::vector<double> lbs_weights;
 
-	// lbs_body_nodes.resize(num_related_bodies);
-	// lbs_local_positions.resize(num_related_bodies);
-	// lbs_weights.resize(num_related_bodies);
-		
-	
 	double total_weight = 0.0;
-	// if(false)
 	if(distance[index_sort_by_distance[0]]<0.08)
 	{
 		lbs_weights.push_back(1.0/sqrt(distance[index_sort_by_distance[0]]));
@@ -97,44 +81,12 @@ AddAnchor(const dart::dynamics::SkeletonPtr& skel,dart::dynamics::BodyNode* bn,c
 		lbs_local_positions.push_back(bn->getTransform().inverse()*glob_pos);
 	}
 	
-	
-	// for(int i = 0;i<num_related_bodies;i++)
-	// {
-	// 	lbs_weights[i] = 1.0/distance[index_sort_by_distance[i]];
-		
-
-	// 	total_weight += lbs_weights[i];
-	// 	lbs_body_nodes[i] = skel->getBodyNode(index_sort_by_distance[i]);
-	// 	lbs_local_positions[i] = local_positions[index_sort_by_distance[i]];
-	// 	std::cout<<lbs_body_nodes[i]->getName()<<" "<<distance[index_sort_by_distance[i]]<<std::endl;
-	// }
-
 	for(int i = 0;i < lbs_body_nodes.size();i++){
-
 		lbs_weights[i] /= total_weight;
 	}
-	// for(int i = 0;i<lbs_body_nodes.size();i++)
-		// std::cout<<lbs_body_nodes[i]->getName()<<" "<<lbs_weights[i]<<std::endl;
-	// std::cout<<std::endl<<std::endl<<std::endl<<std::endl;
 	mAnchors.push_back(new Anchor(lbs_body_nodes,lbs_local_positions,lbs_weights));
-
-	int n =mAnchors.size();
-	if(n>1)
-		l_mt0 += (mAnchors[n-1]->GetPoint()-mAnchors[n-2]->GetPoint()).norm();
-
-	mCachedAnchorPositions.resize(n);
-	Update();
-	Eigen::MatrixXd Jt = GetJacobianTranspose();
-	auto Ap = GetForceJacobianAndPassive();
-	Eigen::VectorXd JtA = Jt*Ap.first;
-	num_related_dofs = 0;
-	related_dof_indices.clear();
-	for(int i =0;i<JtA.rows();i++)
-		if(std::abs(JtA[i])>1E-3){
-			num_related_dofs++;
-			related_dof_indices.push_back(i);
 		}
-}
+
 void
 Muscle::
 AddAnchor(dart::dynamics::BodyNode* bn,const Eigen::Vector3d& glob_pos)
@@ -148,25 +100,25 @@ AddAnchor(dart::dynamics::BodyNode* bn,const Eigen::Vector3d& glob_pos)
 	lbs_weights.push_back(1.0);
 
 	mAnchors.push_back(new Anchor(lbs_body_nodes,lbs_local_positions,lbs_weights));
+}
 
-	int n =mAnchors.size();
-	if(n>1)
-		l_mt0 += (mAnchors[n-1]->GetPoint()-mAnchors[n-2]->GetPoint()).norm();
-
-	mCachedAnchorPositions.resize(n);
+// NOTE : If f0 changes, num_realted_dof can be changed + it can cause bugs
+void Muscle::SetMuscle(){
 	Update();
+	l_mt0 = l_mt;
 	Eigen::MatrixXd Jt = GetJacobianTranspose();
 	auto Ap = GetForceJacobianAndPassive();
 	Eigen::VectorXd JtA = Jt*Ap.first;
 	num_related_dofs = 0;
 	related_dof_indices.clear();
-	for(int i =0;i<JtA.rows();i++)
-		if(std::abs(JtA[i])>1E-3){
+	for(int i =0;i<JtA.rows();i++){
+		if(std::abs(JtA[i])>1E-6){
 			num_related_dofs++;
 			related_dof_indices.push_back(i);
 		}
-	
 }
+}
+
 void
 Muscle::
 ApplyForceToBody()
@@ -189,15 +141,14 @@ ApplyForceToBody()
 		mAnchors[i]->bodynodes[0]->addExtForce(dir,mCachedAnchorPositions[i],false,false);
 	}
 }
-void
-Muscle::
-Update()
-{
-	for(int i =0;i<mAnchors.size();i++)
+void Muscle::Update(){
+	int n = mAnchors.size();
+	mCachedAnchorPositions.resize(n);
+	for(int i = 0; i < n; i++)
 		mCachedAnchorPositions[i] = mAnchors[i]->GetPoint();
-	l_mt = Getl_mt();
 
-	l_m = l_mt - l_t0;
+	l_mt = 0;
+	for(int i = 0; i+1 < n; i++) l_mt += (mAnchors[i]->GetPoint()-mAnchors[i+1]->GetPoint()).norm();
 }
 double
 Muscle::
@@ -209,40 +160,48 @@ double
 Muscle::
 Getf_A()
 {
+	double l_m = l_mt / l_mt0 - l_t0;
 	return f0*g_al(l_m/l_m0);
 }
 double
 Muscle::
 Getf_p()
 {
+	double l_m = l_mt / l_mt0 - l_t0;
 	return f0*g_pl(l_m/l_m0);
-}
-double
-Muscle::
-Getl_mt()
-{
-	l_mt = 0.0;
-	for(int i=1;i<mAnchors.size();i++)
-		l_mt += (mCachedAnchorPositions[i]-mCachedAnchorPositions[i-1]).norm();
-
-	return l_mt/l_mt0;
 }
 Eigen::VectorXd
 Muscle::
 GetRelatedJtA()
 {
-	Eigen::MatrixXd Jt = GetJacobianTranspose();
-	
+	Eigen::MatrixXd Jt_reduced = GetReducedJacobianTranspose();
 	Eigen::VectorXd A = GetForceJacobianAndPassive().first;
-
-	Eigen::VectorXd JtA = Jt*A;
-	
-	Eigen::VectorXd JtA_reduced = Eigen::VectorXd::Zero(num_related_dofs);
-	for(int i =0;i<num_related_dofs;i++){
-		JtA_reduced[i] = JtA[related_dof_indices[i]];
-	}
-
+	Eigen::VectorXd JtA_reduced = Jt_reduced*A;
 	return JtA_reduced;
+}
+
+Eigen::MatrixXd
+Muscle::
+GetReducedJacobianTranspose()
+{
+	const auto& skel = mAnchors[0]->bodynodes[0]->getSkeleton();
+	Eigen::MatrixXd Jt(num_related_dofs, 3*mAnchors.size());
+
+	Jt.setZero();
+	for(int i =0;i<mAnchors.size();i++){
+		auto bn = mAnchors[i]->bodynodes[0];
+		dart::math::Jacobian J = dart::math::Jacobian::Zero(6, num_related_dofs);
+		for(int j = 0; j < num_related_dofs; j++){
+			auto& indices = bn->getDependentGenCoordIndices();
+			int idx = std::find(indices.begin(), indices.end(), related_dof_indices[j]) - indices.begin();
+			if(idx != indices.size()) J.col(j) = bn->getJacobian().col(idx);
+		}
+		// from https://github.com/dartsim/dart/blob/master/dart/dynamics/detail/TemplatedJacobianNode.hpp#L121
+		Eigen::Vector3d offset = mAnchors[i]->bodynodes[0]->getTransform().inverse()*mCachedAnchorPositions[i];
+		dart::math::LinearJacobian JLinear = J.bottomRows<3>() + J.topRows<3>().colwise().cross(offset);
+		Jt.block(0,i*3,num_related_dofs,3) = (bn->getTransform().linear() * JLinear).transpose();
+	}
+	return Jt;	
 }
 
 Eigen::MatrixXd
@@ -376,9 +335,8 @@ double
 Muscle::
 g(double _l_m)
 {
-	double e_t = (l_mt -_l_m-l_t0)/l_t0;
-	_l_m = _l_m/l_m0;
-	double f = g_t(e_t) - (g_pl(_l_m)+activation*g_al(_l_m));
+	double e_t = (l_mt/l_mt0 - _l_m - l_t0)/l_t0;
+	double f = g_t(e_t) - (g_pl(_l_m / l_m0)+activation*g_al(_l_m / l_m0));
 	return f;
 }
 double
@@ -398,10 +356,8 @@ Muscle::
 g_pl(double _l_m)
 {
 	double f_pl = (exp(k_pe*(_l_m-1.0)/e_mo)-1.0)/(exp(k_pe)-1.0);
-	if(_l_m<1.0)
-		return 0.0;
-	else
-		return f_pl;
+	if(_l_m<1.0) return 0.0;
+	else return f_pl;
 }
 double
 Muscle::

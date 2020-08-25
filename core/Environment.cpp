@@ -96,7 +96,7 @@ Initialize(const std::string& meta_file,bool load_obj)
 	ifs.close();
 	
 	
-	double kp = 300.0;
+	double kp = 600.0;
 	character->SetPDParameters(kp,sqrt(2*kp));
 	this->SetCharacter(character);
 	this->SetGround(MASS::BuildFromFile(std::string(MASS_ROOT_DIR)+std::string("/data/ground.xml")));
@@ -231,9 +231,9 @@ Eigen::VectorXd
 Environment::
 GetDesiredTorques()
 {
-	Eigen::VectorXd p_des = mTargetPositions;
+	Eigen::VectorXd p_des = mTargetPositions, v_des = mTargetVelocities;
 	p_des.tail(mTargetPositions.rows()-mRootJointDof) += mAction;
-	mDesiredTorque = mCharacter->GetSPDForces(p_des);
+	mDesiredTorque = mCharacter->GetSPDForces(p_des, v_des);
 	return mDesiredTorque.tail(mDesiredTorque.rows()-mRootJointDof);
 }
 Eigen::VectorXd
@@ -280,8 +280,8 @@ IsEndOfEpisode()
 		isTerminal =true;
 	else if (dart::math::isNan(p) || dart::math::isNan(v))
 		isTerminal =true;
-	else if(mWorld->getTime()>10.0)
-		isTerminal =true;
+//	else if(mWorld->getTime()>10.0)
+//		isTerminal =true;
 	
 	return isTerminal;
 }
@@ -291,16 +291,17 @@ GetState()
 {
 	auto& skel = mCharacter->GetSkeleton();
 	dart::dynamics::BodyNode* root = skel->getBodyNode(0);
-	int num_body_nodes = skel->getNumBodyNodes() - 1;
+	int num_body_nodes = skel->getNumBodyNodes();
 	Eigen::VectorXd p,v;
 
-	p.resize( (num_body_nodes-1)*3);
-	v.resize((num_body_nodes)*3);
+	p.resize(num_body_nodes*3);
+	v.resize((num_body_nodes+1)*3);
 
-	for(int i = 1;i<num_body_nodes;i++)
+	for(int i =0;i<num_body_nodes;i++)
 	{
-		p.segment<3>(3*(i-1)) = skel->getBodyNode(i)->getCOM(root);
-		v.segment<3>(3*(i-1)) = skel->getBodyNode(i)->getCOMLinearVelocity();
+		if(skel->getBodyNode(i) != root) p.segment<3>(3*i) = skel->getBodyNode(i)->getCOM(root);
+		else p.segment<3>(3*i) = skel->getPositions().segment<3>(0);
+		v.segment<3>(3*i) = skel->getBodyNode(i)->getCOMLinearVelocity();
 	}
 	
 	v.tail<3>() = root->getCOMLinearVelocity();
@@ -320,7 +321,7 @@ void
 Environment::
 SetAction(const Eigen::VectorXd& a)
 {
-	mAction = a*0.1;
+	mAction = a*0.04;
 
 	double t = mWorld->getTime();
 
@@ -337,6 +338,7 @@ Environment::
 GetReward()
 {
 	auto& skel = mCharacter->GetSkeleton();
+	auto root = skel->getRootBodyNode();
 
 	Eigen::VectorXd cur_pos = skel->getPositions();
 	Eigen::VectorXd cur_vel = skel->getVelocities();
@@ -367,12 +369,12 @@ GetReward()
 
 	for(int i =0;i<ees.size();i++)
 		ee_diff.segment<3>(i*3) = ees[i]->getCOM();
-	com_diff = skel->getCOM();
+	com_diff = root->getCOM();
 
 	skel->setPositions(mTargetPositions);
 	skel->computeForwardKinematics(true,false,false);
 
-	com_diff -= skel->getCOM();
+	com_diff -= root->getCOM();
 	for(int i=0;i<ees.size();i++)
 		ee_diff.segment<3>(i*3) -= ees[i]->getCOM()+com_diff;
 
