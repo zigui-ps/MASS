@@ -18,7 +18,7 @@ public:
 	void Reset();	
 	void SetPDParameters(double kp, double kv);
 	void AddEndEffector(const std::string& body_name){mEndEffectors.push_back(mSkeleton->getBodyNode(body_name));}
-	Eigen::VectorXd GetSPDForces(const Eigen::VectorXd& p_desired);
+	Eigen::VectorXd GetSPDForces(const Eigen::VectorXd& p_desired, const Eigen::VectorXd& v_desired);
 
 	Eigen::VectorXd GetTargetPositions(double t,double dt);
 	std::pair<Eigen::VectorXd,Eigen::VectorXd> GetTargetPosAndVel(double t,double dt);

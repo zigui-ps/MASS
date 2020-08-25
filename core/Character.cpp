@@ -78,6 +78,7 @@ LoadMuscles(const std::string& path)
 
 			i++;
 		}
+		mMuscles.back()->SetMuscle();
 	}
 	
 
@@ -109,23 +110,38 @@ SetPDParameters(double kp, double kv)
 }
 Eigen::VectorXd
 Character::
-GetSPDForces(const Eigen::VectorXd& p_desired)
+GetSPDForces(const Eigen::VectorXd& p_desired, const Eigen::VectorXd& v_desired)
 {
-	Eigen::VectorXd q = mSkeleton->getPositions();
-	Eigen::VectorXd dq = mSkeleton->getVelocities();
-	double dt = mSkeleton->getTimeStep();
-	// Eigen::MatrixXd M_inv = mSkeleton->getInvMassMatrix();
-	Eigen::MatrixXd M_inv = (mSkeleton->getMassMatrix() + Eigen::MatrixXd(dt*mKv.asDiagonal())).inverse();
+	auto &skel = mSkeleton;
+	Eigen::VectorXd q = skel->getPositions();
+	Eigen::VectorXd dq = skel->getVelocities();
+	double dt = skel->getTimeStep();
+	Eigen::MatrixXf M = (skel->getMassMatrix() + Eigen::MatrixXd(dt * mKv.asDiagonal())).cast<float>();
+	Eigen::MatrixXd M_inv = M.inverse().cast<double>();
 
-	Eigen::VectorXd qdqdt = q + dq*dt;
+	Eigen::VectorXd p_d = q + dq*dt - p_desired;
+	// clamping radians to [-pi, pi], only for ball joints
+	// TODO : make it for all type joints
+	/*
+	p_d.segment<6>(0) = Eigen::VectorXd::Zero(6);
+	for (int i = 6; i < (int)skel->getNumDofs(); i += 3)
+	{
+		Eigen::Quaterniond q_s = Basic::DARTPositionToQuaternion(q.segment<3>(i));
+		Eigen::Quaterniond dq_s = Basic::DARTPositionToQuaternion(dt * (dq.segment<3>(i)));
+		Eigen::Quaterniond q_d_s = Basic::DARTPositionToQuaternion(p_desired.segment<3>(i));
 
-	Eigen::VectorXd p_diff = -mKp.cwiseProduct(mSkeleton->getPositionDifferences(qdqdt,p_desired));
-	Eigen::VectorXd v_diff = -mKv.cwiseProduct(dq);
-	Eigen::VectorXd ddq = M_inv*(-mSkeleton->getCoriolisAndGravityForces()+p_diff+v_diff+mSkeleton->getConstraintForces());
+		Eigen::Quaterniond p_d_s = q_d_s.inverse() * q_s * dq_s;
 
-	Eigen::VectorXd tau = p_diff + v_diff - dt*mKv.cwiseProduct(ddq);
+		Eigen::Vector3d v = Basic::QuaternionToDARTPosition(p_d_s);
+		p_d.segment<3>(i) = v;
+	} // */
+	Eigen::VectorXd p_diff = -mKp.cwiseProduct(p_d);
+	Eigen::VectorXd v_diff = -mKv.cwiseProduct(dq - v_desired);
+	Eigen::VectorXd qddot = M_inv * (-skel->getCoriolisAndGravityForces() +
+		p_diff + v_diff + skel->getConstraintForces());
 
-	tau.head<6>().setZero();
+	Eigen::VectorXd tau = p_diff + v_diff - dt * mKv.cwiseProduct(qddot);
+	tau.segment<6>(0) = Eigen::VectorXd::Zero(6);
 
 	return tau;
 }

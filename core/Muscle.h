@@ -21,15 +21,16 @@ public:
 	Muscle(std::string _name,double f0,double lm0,double lt0,double pen_angle,double lmax);
 	void AddAnchor(const dart::dynamics::SkeletonPtr& skel,dart::dynamics::BodyNode* bn,const Eigen::Vector3d& glob_pos,int num_related_bodies);
 	void AddAnchor(dart::dynamics::BodyNode* bn,const Eigen::Vector3d& glob_pos);
+	void SetMuscle();
 	const std::vector<Anchor*>& GetAnchors(){return mAnchors;}
 	void Update();
 	void ApplyForceToBody();
 	double GetForce();
 	double Getf_A();
 	double Getf_p();
-	double Getl_mt();
 
 	Eigen::MatrixXd GetJacobianTranspose();
+	Eigen::MatrixXd GetReducedJacobianTranspose();
 	std::pair<Eigen::VectorXd,Eigen::VectorXd> GetForceJacobianAndPassive();
 
 	int GetNumRelatedDofs(){return num_related_dofs;};
@@ -56,7 +57,6 @@ public:
 	
 
 	double l_mt,l_mt_max;
-	double l_m;
 	double activation;
 
 
